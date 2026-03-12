@@ -63,8 +63,7 @@ wheel = "*"
 
 
 [feature.manylinux228-build]
-platforms = ["linux-64"]
-# Not supported by manylinux228 platforms = ["linux-aarch64"]
+platforms = ["linux-64", "linux-aarch64"]
 
 [feature.manylinux228-build.dependencies]
 auditwheel = "*"
