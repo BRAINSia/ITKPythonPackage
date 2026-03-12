@@ -73,8 +73,13 @@ ITK_GIT_TAG=${ITK_GIT_TAG:=${ITK_PACKAGE_VERSION}}
 # -----------------------------------------------------------------------
 # Set default values
 MANYLINUX_VERSION=${MANYLINUX_VERSION:-_2_28}
-IMAGE_TAG=${IMAGE_TAG:-20250913-6ea98ba}
 TARGET_ARCH=${TARGET_ARCH:-x64}
+# Default image tag differs by architecture (must match dockcross-manylinux-build-module-wheels.sh)
+if [[ "${TARGET_ARCH}" == "aarch64" ]]; then
+  IMAGE_TAG=${IMAGE_TAG:-2025.08.12-1}
+else
+  IMAGE_TAG=${IMAGE_TAG:-20250913-6ea98ba}
+fi
 ITKPYTHONPACKAGE_ORG=${ITKPYTHONPACKAGE_ORG:-InsightSoftwareConsortium}
 ITKPYTHONPACKAGE_TAG=${ITKPYTHONPACKAGE_TAG:-main}
 
@@ -110,6 +115,7 @@ set -- "${FORWARD_ARGS[@]}" # Restore initial argument list
 _bld_cmd="NO_SUDO=${NO_SUDO} \
     LD_LIBRARY_PATH=${LD_LIBRARY_PATH} \
     IMAGE_TAG=${IMAGE_TAG} \
+    TARGET_ARCH=${TARGET_ARCH} \
     ITK_SOURCE_DIR=${ITK_SOURCE_DIR} \
     ITK_MODULE_PREQ=${ITK_MODULE_PREQ} \
     ITK_MODULE_NO_CLEANUP=${ITK_MODULE_NO_CLEANUP} \
