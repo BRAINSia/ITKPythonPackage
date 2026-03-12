@@ -26,11 +26,19 @@ for cand in nerdctl docker podman; do
 done
 echo "FOUND OCI_EXE=$(which "${OCI_EXE}")"
 
-#TODO: This needs updating to pass along values to
 ITK_GIT_TAG=${ITK_GIT_TAG:="main"}
 MANYLINUX_VERSION=${MANYLINUX_VERSION:=_2_28}
-IMAGE_TAG=${IMAGE_TAG:=20250913-6ea98ba}
 TARGET_ARCH=${TARGET_ARCH:=x64}
+# Default image tag differs by architecture:
+#   x64     → dockcross/manylinux image (docker.io/dockcross)
+#   aarch64 → pypa manylinux image      (quay.io/pypa, native ARM64 / QEMU on x64)
+if [[ "${TARGET_ARCH}" == "aarch64" ]]; then
+  IMAGE_TAG=${IMAGE_TAG:=2025.08.12-1}
+  CONTAINER_SOURCE=${CONTAINER_SOURCE:="quay.io/pypa/manylinux${MANYLINUX_VERSION}_${TARGET_ARCH}:${IMAGE_TAG}"}
+else
+  IMAGE_TAG=${IMAGE_TAG:=20250913-6ea98ba}
+  CONTAINER_SOURCE=${CONTAINER_SOURCE:="docker.io/dockcross/manylinux${MANYLINUX_VERSION}-${TARGET_ARCH}:${IMAGE_TAG}"}
+fi
 ITKPYTHONPACKAGE_ORG=${ITKPYTHONPACKAGE_ORG:=InsightSoftwareConsortium}
 ITKPYTHONPACKAGE_TAG=${ITKPYTHONPACKAGE_TAG:=main}
 
@@ -57,13 +65,7 @@ fi
 unset _missing_required
 
 mkdir -p "${_ipp_dir}/build"
-_local_dockercross_script=${_ipp_dir}/build/runner_dockcross-${MANYLINUX_VERSION}-x64_${IMAGE_TAG}.sh
 cd "$(dirname "${_ipp_dir}")" || exit
-
-# Generate dockcross scripts
-"$OCI_EXE" run \
-  --rm "docker.io/dockcross/manylinux${MANYLINUX_VERSION}-x64:${IMAGE_TAG}" >"${_local_dockercross_script}"
-chmod u+x "${_local_dockercross_script}"
 
 # Build wheels in dockcross environment
 CONTAINER_WORK_DIR=/work
@@ -88,18 +90,49 @@ BUILD_WHEELS_EXTRA_FLAGS=${BUILD_WHEELS_EXTRA_FLAGS:=""} # No tarball by default
 # If args are given, use them. Otherwise use default python environments
 PY_ENVS=("${@:-py310 py311}")
 
-# When building ITK wheels, --module-source-dir, --module-dependancies-root-dir, and --itk-module-deps to be empty
-cmd="bash -x ${_local_dockercross_script} \
-    -a \"$DOCKER_ARGS\" \
-    /usr/bin/env \
-    PY_ENVS=\"${PY_ENVS[*]}\" \
-    ITK_GIT_TAG=\"${ITK_GIT_TAG}\" \
-    MANYLINUX_VERSION=\"${MANYLINUX_VERSION}\" \
-    IMAGE_TAG=\"${IMAGE_TAG}\" \
-    TARGET_ARCH=\"${TARGET_ARCH}\" \
-    ITKPYTHONPACKAGE_ORG=\"${ITKPYTHONPACKAGE_ORG}\" \
-    ITKPYTHONPACKAGE_TAG=\"${ITKPYTHONPACKAGE_TAG}\" \
-    BUILD_WHEELS_EXTRA_FLAGS=\"${BUILD_WHEELS_EXTRA_FLAGS}\" \
-    /bin/bash -x ${CONTAINER_PACKAGE_SCRIPTS_DIR}/scripts/docker_build_environment_driver.sh"
+if [[ "${TARGET_ARCH}" == "aarch64" ]]; then
+  # aarch64: run the quay.io/pypa native image directly.
+  # On ARM64 hosts (e.g. Apple Silicon) this runs natively.
+  # On x64 hosts, first register QEMU binfmt emulation.
+  echo "Installing aarch64 architecture emulation tools to perform build for ARM platform"
+  if [[ ! ${NO_SUDO} ]]; then
+    docker_prefix="sudo"
+  fi
+  ${docker_prefix} "$OCI_EXE" run --privileged --rm tonistiigi/binfmt --install all
+
+  # When building ITK wheels, module-related vars are empty
+  cmd="${docker_prefix} \"$OCI_EXE\" run --rm \
+      ${DOCKER_ARGS} \
+      -e PY_ENVS=\"${PY_ENVS[*]}\" \
+      -e ITK_GIT_TAG=\"${ITK_GIT_TAG}\" \
+      -e MANYLINUX_VERSION=\"${MANYLINUX_VERSION}\" \
+      -e IMAGE_TAG=\"${IMAGE_TAG}\" \
+      -e TARGET_ARCH=\"${TARGET_ARCH}\" \
+      -e ITKPYTHONPACKAGE_ORG=\"${ITKPYTHONPACKAGE_ORG}\" \
+      -e ITKPYTHONPACKAGE_TAG=\"${ITKPYTHONPACKAGE_TAG}\" \
+      -e BUILD_WHEELS_EXTRA_FLAGS=\"${BUILD_WHEELS_EXTRA_FLAGS}\" \
+      ${CONTAINER_SOURCE} \
+      /bin/bash -x ${CONTAINER_PACKAGE_SCRIPTS_DIR}/scripts/docker_build_environment_driver.sh"
+else
+  # x64: generate the dockcross runner script from the image, then invoke it.
+  _local_dockercross_script=${_ipp_dir}/build/runner_dockcross-${MANYLINUX_VERSION}-${TARGET_ARCH}_${IMAGE_TAG}.sh
+  "$OCI_EXE" run --rm "${CONTAINER_SOURCE}" >"${_local_dockercross_script}"
+  chmod u+x "${_local_dockercross_script}"
+
+  # When building ITK wheels, --module-source-dir, --module-dependancies-root-dir, and --itk-module-deps to be empty
+  cmd="bash -x ${_local_dockercross_script} \
+      -a \"$DOCKER_ARGS\" \
+      /usr/bin/env \
+      PY_ENVS=\"${PY_ENVS[*]}\" \
+      ITK_GIT_TAG=\"${ITK_GIT_TAG}\" \
+      MANYLINUX_VERSION=\"${MANYLINUX_VERSION}\" \
+      IMAGE_TAG=\"${IMAGE_TAG}\" \
+      TARGET_ARCH=\"${TARGET_ARCH}\" \
+      ITKPYTHONPACKAGE_ORG=\"${ITKPYTHONPACKAGE_ORG}\" \
+      ITKPYTHONPACKAGE_TAG=\"${ITKPYTHONPACKAGE_TAG}\" \
+      BUILD_WHEELS_EXTRA_FLAGS=\"${BUILD_WHEELS_EXTRA_FLAGS}\" \
+      /bin/bash -x ${CONTAINER_PACKAGE_SCRIPTS_DIR}/scripts/docker_build_environment_driver.sh"
+fi
+
 echo "RUNNING: $cmd"
 eval "$cmd"
