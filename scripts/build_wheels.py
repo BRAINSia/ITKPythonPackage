@@ -505,9 +505,13 @@ def build_wheels_main() -> None:
 
             # Native builds without dockcross need a separate dist dir to avoid conflicts with manylinux
             # dist_dir = IPP_SOURCE_DIR / f"{platform}_dist"
-            if os.environ.get("CROSS_TRIPLE", None) is None:
+            # For the aarch64 manylinux builds, the CROSS_TRIPLE environment variable is unset
+            if os.environ.get("CROSS_TRIPLE", None) is None and target_arch not in (
+                "arm64",
+                "aarch64",
+            ):
                 msg: str = (
-                    f"ERROR: MANYLINUX_VERSION={manylinux_version} but not building in dockcross."
+                    f"ERROR: MANYLINUX_VERSION={manylinux_version} and TARGET_ARCH={target_arch} but not building in dockcross."
                 )
                 raise RuntimeError(msg)
 
