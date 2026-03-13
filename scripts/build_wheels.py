@@ -420,7 +420,7 @@ def build_wheels_main() -> None:
         or args.itk_package_version is None
         or len(args.itk_package_version) == 0
     ):
-        args.itk_package_version: str = os.environ.get(
+        args.itk_package_version = os.environ.get(
             "ITK_PACKAGE_VERSION",
             compute_itk_package_version(
                 args.itk_source_dir, args.itk_git_tag, pixi_exec_path, os.environ
@@ -440,7 +440,7 @@ def build_wheels_main() -> None:
     if os_name == "darwin":
         package_env_config["MACOSX_DEPLOYMENT_TARGET"] = args.macosx_deployment_target
     else:
-        package_env_config["MACOSX_DEPLOYMENT_TARGET"] = "RELAVANT_FOR_MACOS_ONLY"
+        package_env_config["MACOSX_DEPLOYMENT_TARGET"] = "RELEVANT_FOR_MACOS_ONLY"
     package_env_config["ITK_MODULE_PREQ"] = args.itk_module_deps
     package_env_config["NO_SUDO"] = no_sudo
     package_env_config["ITK_MODULE_NO_CLEANUP"] = module_no_cleanup
@@ -492,7 +492,7 @@ def build_wheels_main() -> None:
                 != manylinux_version
             ):
                 print(
-                    f"WARNING: environment variable MANYLINUX_VERSION={manylinux_version} is changed to comand line value of {manylinux_version}."
+                    f"WARNING: environment variable MANYLINUX_VERSION={manylinux_version} is changed to command line value of {manylinux_version}."
                 )
             package_env_config["MANYLINUX_VERSION"] = manylinux_version
             image_tag, manylinux_image_name, container_source = default_manylinux(
@@ -503,7 +503,7 @@ def build_wheels_main() -> None:
             package_env_config["CONTAINER_SOURCE"] = container_source
             package_env_config["TARGET_ARCH"] = target_arch
 
-            # Native builds without dockercross need a separate dist dir to avoid conflicts with manylinux
+            # Native builds without dockcross need a separate dist dir to avoid conflicts with manylinux
             # dist_dir = IPP_SOURCE_DIR / f"{platform}_dist"
             if os.environ.get("CROSS_TRIPLE", None) is None:
                 msg: str = (
