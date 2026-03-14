@@ -72,6 +72,7 @@ class LinuxBuildPythonInstance(BuildPythonInstanceBase):
         )
         if manylinux_ver:
             # Repair all produced wheels with auditwheel for packages with so elements (starts with itk_)
+            whl = None
             # cp39-cp39-linux itk_segmentation-6.0.0b2-cp39-cp39-linux_x86_64.whl
             # Extract Python version from platform_env
             if "-" in self.platform_env:
@@ -204,7 +205,11 @@ class LinuxBuildPythonInstance(BuildPythonInstanceBase):
 
             # Remove the original linux_*.whl after successful repair
             filepath_obj = Path(filepath)
-            if filepath_obj.exists() and "linux_x86_64.whl" in filepath_obj.name:
+            if (
+                filepath_obj.exists()
+                and "-linux_" in filepath_obj.name
+                and filepath_obj.suffix == ".whl"
+            ):
                 print(
                     f"Removing original linux wheel after repair: {filepath_obj.name}"
                 )
@@ -212,9 +217,10 @@ class LinuxBuildPythonInstance(BuildPythonInstanceBase):
                     _remove_tree(filepath_obj)
                 except OSError as e:
                     print(f"Warning: Could not remove {filepath_obj.name}: {e}")
-        print(
-            "Building outside of manylinux environment does not require wheel fixups."
-        )
+        else:
+            print(
+                "Building outside of manylinux environment does not require wheel fixups."
+            )
         return
 
     def post_build_cleanup(self) -> None:
