@@ -47,7 +47,7 @@ fi
 cd "${DASHBOARD_BUILD_DIRECTORY}" || exit
 
 # NOTE: download phase will install pixi in the DASHBOARD_BUILD_DIRECTORY (which is separate from the pixi
-#       environment used by ITKPYthonPackagbe).
+#       environment used by ITKPythonPackage).
 export PIXI_HOME=${DASHBOARD_BUILD_DIRECTORY}/.pixi
 if [ ! -f "${PIXI_HOME}/.pixi/bin/pixi" ]; then
   # Install pixi

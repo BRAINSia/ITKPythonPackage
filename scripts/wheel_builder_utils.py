@@ -387,7 +387,7 @@ def get_git_id(
     if not (repo_dir / ".git").is_dir():
         if (repo_dir / ".git").is_file():
             print(
-                f"WARNING: {str(repo_dir)} is a secondary git worktree, and may not resolve from within dockercross build"
+                f"WARNING: {str(repo_dir)} is a secondary git worktree, and may not resolve from within dockcross build"
             )
             return backup_version
         print(f"ERROR: {repo_dir} is not a primary git repository")
@@ -564,4 +564,4 @@ def get_default_platform_build(default_python_version: str = "py311") -> str:
             return f"linux-{default_python_version}"
         elif sys.platform == "win32":
             return f"windows-{default_python_version}"
-    return f"unkown-{default_python_version}"
+    return f"unknown-{default_python_version}"
