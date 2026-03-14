@@ -173,12 +173,12 @@ if [[ "${TARGET_ARCH}" == "aarch64" ]]; then
       /bin/bash -x ${CONTAINER_PACKAGE_SCRIPTS_DIR}/scripts/docker_build_environment_driver.sh"
 else
   # x64: generate the dockcross runner script from the image, then invoke it.
-  _local_dockercross_script=${_ipp_dir}/build/runner_dockcross-${MANYLINUX_VERSION}-${TARGET_ARCH}_${IMAGE_TAG}.sh
-  "$OCI_EXE" run --rm "${CONTAINER_SOURCE}" >"${_local_dockercross_script}"
-  chmod u+x "${_local_dockercross_script}"
+  _local_dockcross_script=${_ipp_dir}/build/runner_dockcross-${MANYLINUX_VERSION}-${TARGET_ARCH}_${IMAGE_TAG}.sh
+  "$OCI_EXE" run --rm "${CONTAINER_SOURCE}" >"${_local_dockcross_script}"
+  chmod u+x "${_local_dockcross_script}"
 
-  # When building ITK remote wheels, --module-source-dir, --module-dependancies-root-dir, and --itk-module-deps should be present
-  cmd="bash -x ${_local_dockercross_script} \
+  # When building ITK remote wheels, --module-source-dir, --module-dependencies-root-dir, and --itk-module-deps should be present
+  cmd="bash -x ${_local_dockcross_script} \
       -a \"$DOCKER_ARGS\" \
       /usr/bin/env \
       PY_ENVS=\"${PY_ENVS[*]}\" \
