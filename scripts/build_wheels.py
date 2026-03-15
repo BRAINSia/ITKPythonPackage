@@ -144,10 +144,11 @@ def build_wheels_main() -> None:
             "Windows only: semicolon-delimited library directories for delvewheel to include in module wheel"
         ),
     )
+    _cmake_options_default = remote_module_build_dict["CMAKE_OPTIONS"]
     parser.add_argument(
         "cmake_options",
         nargs="*",
-        default=remote_module_build_dict["CMAKE_OPTIONS"],
+        default=shlex.split(_cmake_options_default) if _cmake_options_default else [],
         help="Extra options to pass to CMake, e.g. -DBUILD_SHARED_LIBS:BOOL=OFF.\n"
         "   These will override defaults if duplicated",
     )

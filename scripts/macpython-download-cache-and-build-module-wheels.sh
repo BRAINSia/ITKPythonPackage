@@ -30,6 +30,34 @@ DEFAULT_MODULE_DIRECTORY=$(
 # if not specified, use the current directory for MODULE_SRC_DIRECTORY
 MODULE_SRC_DIRECTORY=${MODULE_SRC_DIRECTORY:=${DEFAULT_MODULE_DIRECTORY}}
 
+usage() {
+  echo "Usage:
+  macpython-download-cache-and-build-module-wheels
+    [ -h | --help ]           show usage
+    [ -c | --cmake_options ]  space-delimited string containing CMake options to forward to the module (e.g. \"-DBUILD_TESTING=OFF\")
+    [ python_version ]        build wheel for a specific python version. (e.g. 3.11)"
+  exit 2
+}
+
+CMAKE_OPTIONS=""
+PARSED_ARGS=$(getopt -a -n macpython-download-cache-and-build-module-wheels \
+  -o hc: --long help,cmake_options: -- "$@")
+eval set -- "$PARSED_ARGS"
+while :; do
+  case "$1" in
+  -h | --help) usage ;;
+  -c | --cmake_options)
+    CMAKE_OPTIONS="$2"
+    shift 2
+    ;;
+  --)
+    shift
+    break
+    ;;
+  *) usage ;;
+  esac
+done
+
 if [ -z "${ITK_PACKAGE_VERSION}" ]; then
   echo "MUST SET ITK_PACKAGE_VERSION BEFORE RUNNING THIS SCRIPT"
   exit 1
@@ -113,9 +141,8 @@ fi
 
 echo "Building module wheels"
 cd "${DASHBOARD_BUILD_DIRECTORY}/ITKPythonPackage" || exit
-args=("$@")
-echo "${args[@]}"
-for py_indicator in "${args[@]}"; do
+echo "$@"
+for py_indicator in "$@"; do
   # The following line is to convert "py3.11|py311|cp311|3.11" -> py311 normalized form
   py_squashed_numeric=$(echo "${py_indicator}" | sed 's/py//g' | sed 's/cp//g' | sed 's/\.//g')
   pyenv=py${py_squashed_numeric}
@@ -135,6 +162,7 @@ for py_indicator in "${args[@]}"; do
     --no-use-sudo \
     --no-use-ccache \
     --skip-itk-build \
-    --skip-itk-wheel-build
+    --skip-itk-wheel-build \
+    ${CMAKE_OPTIONS:+-- ${CMAKE_OPTIONS}}
   #Let this be automatically selected --macosx-deployment-target 10.7 \
 done

@@ -37,7 +37,6 @@ usage() {
   exit 2
 }
 
-FORWARD_ARGS=("$@") # Store arguments to forward them later
 PARSED_ARGS=$(getopt -a -n dockcross-manylinux-download-cache-and-build-module-wheels \
   -o hc:x: --long help,cmake_options:,exclude_libs: -- "$@")
 eval set -- "$PARSED_ARGS"
@@ -110,7 +109,6 @@ ITK_SOURCE_DIR=${download_script_dir}/ITKPythonPackage-build/ITK
 # Build module wheels
 
 echo "Building module wheels"
-set -- "${FORWARD_ARGS[@]}" # Restore initial argument list
 
 _bld_cmd="NO_SUDO=${NO_SUDO} \
     LD_LIBRARY_PATH=${LD_LIBRARY_PATH} \
