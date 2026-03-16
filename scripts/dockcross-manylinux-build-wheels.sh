@@ -94,11 +94,14 @@ if [[ "${TARGET_ARCH}" == "aarch64" ]]; then
   # aarch64: run the quay.io/pypa native image directly.
   # On ARM64 hosts (e.g. Apple Silicon) this runs natively.
   # On x64 hosts, first register QEMU binfmt emulation.
-  echo "Installing aarch64 architecture emulation tools to perform build for ARM platform"
   if [[ ! ${NO_SUDO} ]]; then
     docker_prefix="sudo"
   fi
-  ${docker_prefix} "$OCI_EXE" run --privileged --rm tonistiigi/binfmt --install all
+  # Only install QEMU binfmt emulation on non-ARM64 hosts; ARM64 hosts run natively
+  if [[ "$(uname -m)" != "arm64" && "$(uname -m)" != "aarch64" ]]; then
+    echo "Installing aarch64 architecture emulation tools to perform build for ARM platform"
+    ${docker_prefix} "$OCI_EXE" run --privileged --rm tonistiigi/binfmt --install all
+  fi
 
   # When building ITK wheels, module-related vars are empty
   cmd="${docker_prefix} \"$OCI_EXE\" run --rm \
