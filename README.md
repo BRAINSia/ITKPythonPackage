@@ -99,12 +99,12 @@ You can invoke the `build_wheels.py` script directly for more control shown belo
 
 Available pixi platform build environments:
 
-| Platform | Python Versions |
-|----------|--------------|
-| `linux` | py310, py311 |
-| `manylinux228` | py310, py311 |
-| `macosx` | py310, py311 |
-| `windows` | py310, py311 |
+| Platform | Architectures | Python Versions |
+|----------|---------------|-----------------|
+| `linux` | x86_64, aarch64 | py310, py311 |
+| `manylinux228` | x86_64, aarch64 | py310, py311 |
+| `macosx` | x86_64, arm64 | py310, py311 |
+| `windows` | x86_64 | py310, py311 |
 
 
 ```bash
@@ -282,11 +282,18 @@ To build caches for local use, you can run the `build_wheels.py` script with the
 ### What target platforms and architectures are supported?
 
 ITKPythonPackage currently supports building wheels for the following platforms and architectures:
-- Windows 10 x86_64 platforms
-- Windows 11 x86_64 platforms
-- MacOS 15.0+ x86_64 and arm64 platforms
-- Linux glibc 2.17+ (E.g. Ubuntu 18.04+) x86_64 platforms
-- Linux glibc 2.28+ (E.g. Ubuntu 20.04+) aarch64 (ARMv8) platforms
+- Windows 10/11 x86_64
+- macOS arm64 (Apple Silicon)
+- macOS x86_64 (Intel)
+- Linux glibc 2.28+ (e.g. Ubuntu 20.04+) x86_64
+- Linux glibc 2.28+ (e.g. Ubuntu 20.04+) aarch64 (ARMv8)
+
+[ITKRemoteModuleBuildTestPackageAction](https://github.com/InsightSoftwareConsortium/ITKRemoteModuleBuildTestPackageAction)
+CI workflows support Python 3.10–3.11 on GitHub-hosted runners for:
+- Ubuntu x86_64
+- Ubuntu aarch64 (ARM)
+- macOS arm64 (Apple Silicon)
+- Windows x86_64
 
 ### What should I do if my target platform/architecture does not appear on the list above?
 
