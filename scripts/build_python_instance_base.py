@@ -821,6 +821,14 @@ class BuildPythonInstanceBase(ABC):
                 f"--config-setting=cmake.source-dir={self.package_env_config['IPP_SOURCE_DIR'] / 'BuildWheelsSupport'}",
                 f"--config-setting=build-dir={wheel_configbuild_dir_root/'build'}",
             ]
+            if self.target.os_name == "windows":
+                # Same reason as the remote-module build below: pixi's
+                # vs2022 activation exports CMAKE_GENERATOR="Visual Studio
+                # 17 2022", scikit-build-core honours it, and the ITK wheels
+                # were being built with MSBuild while ITK itself used Ninja.
+                # An explicit -G also makes CMake ignore the ambient
+                # CMAKE_GENERATOR_PLATFORM/TOOLSET that Ninja would reject.
+                cmd.append("--config-setting=cmake.args=-GNinja")
             # Build scikit-build defines via builder
             scikitbuild_cmdline_args = CMakeArgumentBuilder()
             scikitbuild_cmdline_args.update(self.cmake_compiler_configurations.items())
