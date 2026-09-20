@@ -9,6 +9,7 @@ from pathlib import Path
 
 import build_environment
 import wheel_packaging
+from build_jobs import compute_build_jobs, compute_load_limit, physical_memory_gb
 from BuildManager import BuildManager
 from cmake_argument_builder import CMakeArgumentBuilder
 from module_dependencies import build_module_dependencies, update_module_itk_deps
@@ -94,7 +95,29 @@ class BuildPythonInstanceBase(ABC):
         skip_itk_build: bool | None = None,
         skip_itk_wheel_build: bool | None = None,
     ) -> None:
-        self.build_node_cpu_count: int = os.cpu_count() or 1
+        # Jobs are bounded by physical memory, not just CPU count: ITK's
+        # wrapping units are template-heavy, and cpu_count() jobs on a box
+        # with ~2 GB RAM per thread thrashes instead of building faster.
+        # See build_jobs.py; ITK_BUILD_JOBS / ITK_BUILD_LOAD_LIMIT override.
+        self.build_node_memory_gb: float | None = physical_memory_gb()
+        self.build_node_cpu_count: int = compute_build_jobs(
+            os.cpu_count(), self.build_node_memory_gb
+        )
+        # -l is a CPU budget, keyed to the thread count, never to the
+        # memory-derived job count: ninja honours -l on Windows, and
+        # -l<jobs> on a box with more threads than jobs throttles ninja to
+        # a crawl whenever a saturating compile pushes load past <jobs>.
+        self.build_load_limit: int = compute_load_limit(os.cpu_count())
+        _mem = (
+            f"{self.build_node_memory_gb:.1f} GB"
+            if self.build_node_memory_gb
+            else "unknown"
+        )
+        print(
+            f"# Build parallelism: -j{self.build_node_cpu_count} "
+            f"-l{self.build_load_limit} "
+            f"(cpus={os.cpu_count()}, ram={_mem})"
+        )
         self.platform_env = platform_env
         self.ipp_dir = Path(__file__).parent.parent
 
@@ -877,7 +900,7 @@ class BuildPythonInstanceBase(ABC):
             [
                 self.package_env_config["NINJA_EXECUTABLE"],
                 f"-j{self.build_node_cpu_count}",
-                f"-l{self.build_node_cpu_count}",
+                f"-l{self.build_load_limit}",
                 "-C",
                 self.cmake_itk_source_build_configurations["ITK_BINARY_DIR:PATH"],
             ],
