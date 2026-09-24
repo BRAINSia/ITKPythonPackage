@@ -429,6 +429,10 @@ class BuildPythonInstanceBase(ABC):
         ]
 
         self.echo_check_call(cmd, check=True)
+        # check=True: a failed superbuild (a oneTBB download that never
+        # completed, for instance) was recorded as a done step, and the run
+        # then failed in step 02 with "Could not find ... TBBConfig.cmake",
+        # far from the cause.
         self.echo_check_call(
             [
                 self.package_env_config["CMAKE_EXECUTABLE"],
@@ -439,6 +443,7 @@ class BuildPythonInstanceBase(ABC):
                 # str(self.build_node_cpu_count),
                 str(self.package_env_config["IPP_SUPERBUILD_BINARY_DIR"]),
             ],
+            check=True,
         )
 
     def fixup_wheels(self, lib_paths: str = ""):
