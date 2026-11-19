@@ -318,6 +318,45 @@ def test_configure_toolchain_leaves_python_host_platform_unset_without_a_target(
     assert "_PYTHON_HOST_PLATFORM" not in os.environ
 
 
+def _make_toolchain(tmp_path: Path, tools: list[str]) -> Path:
+    bin_dir = tmp_path / "toolchain" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ["arm64-apple-darwin20.0.0-clang++", *tools]:
+        (bin_dir / name).write_text("#!/bin/sh\n")
+        (bin_dir / name).chmod(0o755)
+    return bin_dir
+
+
+def test_configure_toolchain_sets_llvm_archiver_beside_the_compiler(
+    macos_builder, monkeypatch, tmp_path
+):
+    """CMake's IPO check needs llvm-ar, which it cannot find for conda clang."""
+    bin_dir = _make_toolchain(tmp_path, ["llvm-ar", "llvm-ranlib"])
+    monkeypatch.setenv("CXX", str(bin_dir / "arm64-apple-darwin20.0.0-clang++"))
+    macos_builder._configure_toolchain()
+    get = macos_builder.cmake_compiler_configurations.get
+    for lang in ("C", "CXX"):
+        assert get(f"CMAKE_{lang}_COMPILER_AR:FILEPATH") == str(bin_dir / "llvm-ar")
+        assert get(f"CMAKE_{lang}_COMPILER_RANLIB:FILEPATH") == str(
+            bin_dir / "llvm-ranlib"
+        )
+
+
+def test_configure_toolchain_leaves_archiver_unset_without_llvm_ar(
+    macos_builder, monkeypatch, tmp_path
+):
+    """A compiler without llvm-ar beside it, like Apple's, keeps CMake's choice."""
+    bin_dir = _make_toolchain(tmp_path, [])
+    monkeypatch.setenv("CXX", str(bin_dir / "arm64-apple-darwin20.0.0-clang++"))
+    macos_builder._configure_toolchain()
+    assert (
+        macos_builder.cmake_compiler_configurations.get(
+            "CMAKE_CXX_COMPILER_AR:FILEPATH"
+        )
+        is None
+    )
+
+
 def test_host_arch_is_independent_of_target(monkeypatch):
     """QEMU reads the host; a cross-build sets only the target.
 

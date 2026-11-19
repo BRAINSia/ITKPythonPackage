@@ -1,4 +1,5 @@
 import os
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -31,6 +32,18 @@ class MacOSBuildPythonInstance(PosixBuildPythonInstance):
         self.cmake_compiler_configurations.set(
             "CMAKE_OSX_ARCHITECTURES:STRING", self.target.cmake_osx_arch
         )
+        # CMake looks only for <triple>-llvm-ar beside conda's <triple>-clang++,
+        # so without these its IPO check fails and LTO is disabled.
+        cxx = shutil.which(os.environ.get("CXX", "c++"))
+        if cxx:
+            tool_dir = Path(cxx).parent
+            for tool, var in (("llvm-ar", "AR"), ("llvm-ranlib", "RANLIB")):
+                if (tool_dir / tool).is_file():
+                    for lang in ("C", "CXX"):
+                        self.cmake_compiler_configurations.set(
+                            f"CMAKE_{lang}_COMPILER_{var}:FILEPATH",
+                            str(tool_dir / tool),
+                        )
 
     def post_build_fixup(self) -> None:
         """Run ``delocate`` on every wheel to bundle shared libraries."""
