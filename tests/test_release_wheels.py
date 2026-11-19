@@ -172,3 +172,58 @@ def test_a_directory_that_is_not_a_repository_is_not_used(tmp_path, itk_reposito
     src.mkdir(parents=True)
     with pytest.raises(SystemExit, match="not a git repository"):
         rw.prepare_itk_source(src, str(repo), "main")
+
+
+def test_each_build_has_the_step_log_build_wheels_reads(tmp_path, monkeypatch):
+    monkeypatch.setenv("MANYLINUX_VERSION", "_2_34")
+    native, container = rw.plan(
+        ["macos-arm64", "manylinux-x64"], tmp_path / "ITK", "abc123", "6.0b3"
+    )
+    assert native.step_log == native.dist_dir / "build_log_macosx-py311.json"
+    assert (
+        container.step_log == container.dist_dir / "build_log_manylinux234-py311.json"
+    )
+    assert container.dist_dir.parent.name == "ITKPythonPackage-manylinux_2_34-build"
+
+
+def _fake_build(tmp_path, monkeypatch, write_wheel):
+    """Run main for manylinux-x64 with the container build replaced by a stub."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    log = dist / "build_log_manylinux228-py311.json"
+    log.write_text('{"steps": {"02_build_wrapped_itk_cplusplus": {"status": "done"}}}')
+    old = dist / "itk_old-6.0b2-cp311-abi3-manylinux_2_28_x86_64.whl"
+    old.write_bytes(b"")
+    monkeypatch.delenv("MANYLINUX_VERSION", raising=False)
+    monkeypatch.setattr(rw, "container_build_root", lambda: tmp_path)
+    monkeypatch.setattr(rw, "native_build_root", lambda: tmp_path)
+    monkeypatch.setattr(rw, "_container_engine", lambda: "docker")
+    monkeypatch.setattr(rw, "prepare_itk_source", lambda *a: ("abc123", False))
+    monkeypatch.setattr(rw.Host, "detect", classmethod(lambda cls: LINUX_X64))
+    seen = {}
+
+    def run(cmd, **kwargs):
+        seen["log_existed"] = log.exists()
+        if write_wheel:
+            (dist / "itk_core-6.0b3-cp311-abi3-manylinux_2_28_x86_64.whl").write_bytes(
+                b""
+            )
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(rw.subprocess, "run", run)
+    return rw.main(["abc123", "6.0b3"]), seen
+
+
+def test_a_rerun_does_not_reuse_an_earlier_build(tmp_path, monkeypatch, capsys):
+    status, seen = _fake_build(tmp_path, monkeypatch, write_wheel=True)
+    out = capsys.readouterr().out
+    assert status == 0
+    assert seen["log_existed"] is False
+    built = out.split("wheels built in")[1].split("older wheels")[0]
+    assert "itk_core-6.0b3" in built and "itk_old" not in built
+    assert "itk_old-6.0b2" in out.split("older wheels")[1]
+
+
+def test_a_build_that_writes_no_wheel_fails(tmp_path, monkeypatch):
+    status, _ = _fake_build(tmp_path, monkeypatch, write_wheel=False)
+    assert status == 1

@@ -79,6 +79,7 @@ class Step:
     command: list[str]
     env: dict[str, str] = field(default_factory=dict)
     dist_dir: Path = Path()
+    step_log: Path = Path()
 
 
 def default_targets(host: Host) -> list[str]:
@@ -148,10 +149,18 @@ def native_build_root() -> Path:
     return IPP_DIR.parent / "ITKPythonPackage-build"
 
 
+def _manylinux_version() -> str:
+    return os.environ.get("MANYLINUX_VERSION") or "_2_28"
+
+
 def container_build_root() -> Path:
     """Host directory that the manylinux container builds in."""
-    manylinux = os.environ.get("MANYLINUX_VERSION") or "_2_28"
-    return IPP_DIR.parent / f"ITKPythonPackage-manylinux{manylinux}-build"
+    return IPP_DIR.parent / f"ITKPythonPackage-manylinux{_manylinux_version()}-build"
+
+
+def container_pixi_env() -> str:
+    """Pixi environment the manylinux container builds with, e.g. manylinux228-py311."""
+    return f"manylinux{_manylinux_version().replace('_', '')}-py311"
 
 
 def _git(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
@@ -253,6 +262,9 @@ def plan(
                         "--build-itk-tarball-cache",
                     ],
                     dist_dir=native_build_root() / "dist",
+                    step_log=native_build_root()
+                    / "dist"
+                    / f"build_log_{env_name}.json",
                 )
             )
         else:
@@ -275,9 +287,28 @@ def plan(
                         "NO_SUDO": os.environ.get("NO_SUDO", "1"),
                     },
                     dist_dir=container_build_root() / "dist",
+                    step_log=container_build_root()
+                    / "dist"
+                    / f"build_log_{container_pixi_env()}.json",
                 )
             )
     return steps
+
+
+def wheel_snapshot(step: Step) -> dict[Path, int]:
+    """The target's wheels in its dist directory, with their modification times."""
+    return {
+        w: w.stat().st_mtime_ns
+        for w in sorted(step.dist_dir.glob(WHEEL_GLOB[step.target]))
+    }
+
+
+def built_wheels(
+    before: dict[Path, int], after: dict[Path, int]
+) -> tuple[list[Path], list[Path]]:
+    """Wheels the build wrote, and the untouched ones left from earlier builds."""
+    fresh = [w for w, mtime in after.items() if before.get(w) != mtime]
+    return fresh, [w for w in after if w not in fresh]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -339,16 +370,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {step.target}: {env_text} {' '.join(step.command)}", flush=True)
         if args.dry_run:
             continue
+        # A step log from an earlier build would make build_wheels.py skip this one.
+        step.step_log.unlink(missing_ok=True)
+        before = wheel_snapshot(step)
         result = subprocess.run(
             step.command, cwd=IPP_DIR, env={**os.environ, **step.env}, check=False
         )
-        if result.returncode != 0:
+        fresh, stale = built_wheels(before, wheel_snapshot(step))
+        if result.returncode != 0 or not fresh:
             failed.append(step.target)
-            print(f"=== {step.target} FAILED (exit {result.returncode})", flush=True)
+            reason = f"exit {result.returncode}" if result.returncode else "no wheels"
+            print(f"=== {step.target} FAILED ({reason})", flush=True)
             continue
-        print(f"=== {step.target} wheels in {step.dist_dir}:", flush=True)
-        for wheel in sorted(step.dist_dir.glob(WHEEL_GLOB[step.target])):
+        print(f"=== {step.target} wheels built in {step.dist_dir}:", flush=True)
+        for wheel in fresh:
             print(f"    {wheel.name}  {wheel.stat().st_size / 1e6:.1f} MB")
+        if stale:
+            print(f"=== {step.target}: older wheels there, not from this build:")
+            for wheel in stale:
+                print(f"    {wheel.name}")
 
     if failed:
         print(f"\nFailed: {', '.join(failed)}", file=sys.stderr)
