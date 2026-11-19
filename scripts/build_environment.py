@@ -34,7 +34,7 @@ def echo_check_call(
     env=None,
     **kwargs: dict,
 ) -> int:
-    """Print the command, then run it and return its exit status.
+    """Print the command, run it echoing its output live, and return its status.
 
     Parameters
     ----------
@@ -99,25 +99,13 @@ def echo_check_call(
     print("^" * 60)
     print(kwargs)
     print("^" * 60)
+    sys.stdout.flush()
     process_completion_info: subprocess.CompletedProcess = run_commandLine_subprocess(
-        cmd, env=pixi_env, cwd=run_dir, **kwargs
+        cmd, env=pixi_env, cwd=run_dir, stream=True, **kwargs
     )
     cmd_return_status: int = process_completion_info.returncode
     print("^" * 60)
-    print(f"<<Finished Running: cmd_return_status={cmd_return_status}")
-    print(" ====== stdout =====")
-    stdout_val = process_completion_info.stdout
-    if isinstance(stdout_val, bytes):
-        print(stdout_val.decode("utf-8"))
-    else:
-        print(stdout_val)
-    print(" ====== stderr =====")
-    stderr_val = process_completion_info.stderr
-    if isinstance(stderr_val, bytes):
-        print(stderr_val.decode("utf-8"))
-    else:
-        print(stderr_val)
-    print(" ===================")
+    print(f"<<Finished Running: cmd_return_status={cmd_return_status}", flush=True)
     return cmd_return_status
 
 
