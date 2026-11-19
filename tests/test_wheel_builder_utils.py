@@ -94,3 +94,14 @@ def test_compute_itk_package_version_raises_when_fetch_fails(tmp_path):
     with patch.object(wheel_builder_utils, "run_commandLine_subprocess", fake_run):
         with pytest.raises(RuntimeError, match="git fetch"):
             compute_itk_package_version(tmp_path, "v6.0.0", None, {})
+
+
+def test_streamed_output_is_also_returned(capsys):
+    import sys
+
+    result = wheel_builder_utils.run_commandLine_subprocess(
+        [sys.executable, "-c", "print('line one'); print('line two')"], stream=True
+    )
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == ["line one", "line two"]
+    assert "line one\nline two\n" in capsys.readouterr().out
