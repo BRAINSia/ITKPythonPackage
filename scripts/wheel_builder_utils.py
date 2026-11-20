@@ -298,11 +298,33 @@ def which_required(name: str) -> Path:
     return path
 
 
+def _run_streaming(
+    cmd: list[str], cwd: Path | None, env: dict | None
+) -> subprocess.CompletedProcess:
+    """Run *cmd*, echoing each output line as it arrives and keeping a copy."""
+    lines: list[str] = []
+    with subprocess.Popen(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        env=env if env else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        bufsize=1,
+    ) as proc:
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            lines.append(line)
+    return subprocess.CompletedProcess(cmd, proc.returncode, "".join(lines), "")
+
+
 def run_commandLine_subprocess(
     cmd: list[str | Path],
     cwd: Path | None = None,
     env: dict = None,
     check: bool = False,
+    stream: bool = False,
 ) -> subprocess.CompletedProcess:
     """Run a command via ``subprocess.run`` with logging.
 
@@ -316,6 +338,9 @@ def run_commandLine_subprocess(
         Environment variables for the subprocess.
     check : bool, optional
         If True, raise ``RuntimeError`` on non-zero exit codes.
+    stream : bool, optional
+        If True, print the output (stderr merged into stdout) line by line
+        as the command runs, instead of only capturing it.
 
     Returns
     -------
@@ -330,13 +355,16 @@ def run_commandLine_subprocess(
     """
     cmd = [str(x) for x in cmd]
     print(f"Running >>>>>: {' '.join(cmd)}  ; # in cwd={cwd} with check={check}\n")
-    completion_info = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-        env=env if env else None,
-    )
+    if stream:
+        completion_info = _run_streaming(cmd, cwd, env)
+    else:
+        completion_info = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            env=env if env else None,
+        )
     if completion_info.returncode != 0 and check:
         error_msg = "!~" * 40
         if env:
@@ -344,7 +372,7 @@ def run_commandLine_subprocess(
             for k, v in env.items():
                 error_msg += f"\n{k}={v}"
             error_msg += "=============================="
-        if completion_info.stdout:
+        if completion_info.stdout and not stream:
             error_msg += f"\nStdout:\n {completion_info.stdout}"
         if completion_info.stderr:
             error_msg += f"\nStderr:\n {completion_info.stderr}"
