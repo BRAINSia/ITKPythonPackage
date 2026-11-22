@@ -1,0 +1,273 @@
+name: weekly-wheels-stage
+
+# One stage of weekly-wheels.yaml. Stage 1 builds every target; when the
+# build step reaches its time budget, the build tree and compiler cache are
+# handed to stage 2 as an artifact, and stage 2 resumes the ninja build.
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: number
+      itk-commit:
+        required: true
+        type: string
+      package-version:
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # Leaves time for setup, packing the build tree, and saving the cache
+  # inside the 6 h job limit.
+  BUILD_MINUTES: 290
+  CCACHE_MAXSIZE: 4G
+  SCCACHE_CACHE_SIZE: 4G
+
+jobs:
+  wheels:
+    name: ${{ matrix.target }} (stage ${{ inputs.stage }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: manylinux-x64
+            cache-tool: ccache
+            runner: ubuntu-24.04
+            pixi-environments: default
+            tree-dirs: ITKPythonPackage-build ITKPythonPackage-manylinux_2_28-x64-build itk-compiler-cache
+            dist-dir: ITKPythonPackage-manylinux_2_28-x64-build/dist
+          - target: manylinux-aarch64
+            cache-tool: ccache
+            runner: ubuntu-24.04-arm
+            pixi-environments: default
+            tree-dirs: ITKPythonPackage-build ITKPythonPackage-manylinux_2_28-aarch64-build itk-compiler-cache
+            dist-dir: ITKPythonPackage-manylinux_2_28-aarch64-build/dist
+          - target: macos-arm64
+            cache-tool: ccache
+            runner: macos-15
+            pixi-environments: default macosx-py311
+            tree-dirs: ITKPythonPackage-build itk-compiler-cache
+            dist-dir: ITKPythonPackage-build/dist
+          - target: windows-x64
+            cache-tool: sccache
+            runner: windows-2022
+            pixi-environments: default windows-py311
+            tree-dirs: BDR itk-compiler-cache
+            dist-dir: BDR/dist
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      STAGE: ${{ inputs.stage }}
+      ITK_COMMIT: ${{ inputs.itk-commit }}
+      PACKAGE_VERSION: ${{ inputs.package-version }}
+      TREE_DIRS: ${{ matrix.tree-dirs }}
+      DIST_SUBDIR: ${{ matrix.dist-dir }}
+      CACHE_TOOL: ${{ matrix.cache-tool }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Fetch the build tree stage 1 left unfinished
+        id: tree
+        if: inputs.stage > 1
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: itk-build-tree-${{ matrix.target }}
+          path: ${{ runner.temp }}/itk-build-tree
+
+      - name: Decide whether this stage has work
+        id: gate
+        env:
+          TREE_OUTCOME: ${{ steps.tree.outcome }}
+        run: |
+          if [[ "${STAGE}" == 1 || "${TREE_OUTCOME}" == success ]]; then
+            echo "go=true" >>"${GITHUB_OUTPUT}"
+          else
+            echo "${TARGET} finished in an earlier stage."
+            echo "go=false" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set paths
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            root=C:/
+          else
+            root=$(dirname "${GITHUB_WORKSPACE}")
+          fi
+          cache_dir=${root%/}/itk-compiler-cache
+          {
+            echo "TREE_ROOT=${root}"
+            echo "DIST_DIR=${root%/}/${DIST_SUBDIR}"
+            echo "COMPILER_CACHE_DIR=${cache_dir}"
+            echo "CCACHE_DIR=${cache_dir}"
+            echo "SCCACHE_DIR=${cache_dir}"
+            echo "ITK_CONTAINER_CCACHE_DIR=${cache_dir}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Free disk space
+        if: steps.gate.outputs.go == 'true' && runner.os == 'Linux'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Report disk and processors
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          df -h "${GITHUB_WORKSPACE}" "${TREE_ROOT}" || true
+          if [[ "${RUNNER_OS}" == macOS ]]; then sysctl -n hw.ncpu hw.memsize; fi
+          if [[ "${RUNNER_OS}" == Linux ]]; then nproc; free -g; fi
+          if [[ "${RUNNER_OS}" == Windows ]]; then echo "${NUMBER_OF_PROCESSORS}"; fi
+
+      - name: Unpack the stage 1 build tree
+        if: steps.gate.outputs.go == 'true' && inputs.stage > 1
+        run: |
+          cd "${TREE_ROOT}"
+          cmake -E tar xf "${RUNNER_TEMP}/itk-build-tree/itk-build-tree.tar.zst"
+          rm -f "${RUNNER_TEMP}/itk-build-tree/itk-build-tree.tar.zst"
+
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+        if: steps.gate.outputs.go == 'true'
+        with:
+          environments: ${{ matrix.pixi-environments }}
+          # The compiler cache needs the whole Actions cache budget.
+          cache: false
+
+      - name: Restore the compiler cache
+        if: steps.gate.outputs.go == 'true' && inputs.stage == 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPILER_CACHE_DIR }}
+          key: ${{ matrix.cache-tool }}-v1-${{ runner.os }}-${{ matrix.target }}-${{ inputs.itk-commit }}
+          restore-keys: |
+            ${{ matrix.cache-tool }}-v1-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Configure and trim the ccache
+        if: steps.gate.outputs.go == 'true' && matrix.cache-tool == 'ccache'
+        run: |
+          ccache_cmd() { pixi exec --spec 'ccache>=4.10,<5' ccache "$@"; }
+          mkdir -p "${COMPILER_CACHE_DIR}"
+          # A fresh pixi install gives the compiler new mtimes, so check by content.
+          for setting in "compiler_check=content" "sloppiness=pch_defines,time_macros" "hash_dir=false"; do
+            ccache_cmd --set-config "${setting}"
+          done
+          ccache_cmd --evict-older-than 7d
+          ccache_cmd --show-config
+
+      - name: Record the build start time
+        if: steps.gate.outputs.go == 'true'
+        run: echo "BUILD_START=$(date +%s)" >>"${GITHUB_ENV}"
+
+      - name: Build the wheels
+        id: build
+        if: steps.gate.outputs.go == 'true'
+        timeout-minutes: ${{ fromJSON(env.BUILD_MINUTES) }}
+        continue-on-error: true
+        run: |
+          args=("${ITK_COMMIT}")
+          if [[ -n "${PACKAGE_VERSION}" ]]; then args+=("${PACKAGE_VERSION}"); fi
+          pixi run release-wheels "${args[@]}" --targets "${TARGET}"
+
+      - name: Classify the build result
+        id: result
+        if: always() && steps.gate.outputs.go == 'true'
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          elapsed=$(($(date +%s) - BUILD_START))
+          echo "Build step: ${BUILD_OUTCOME} after ${elapsed} s"
+          if [[ "${BUILD_OUTCOME}" == success ]]; then
+            echo "state=done" >>"${GITHUB_OUTPUT}"
+          elif ((elapsed >= BUILD_MINUTES * 60 - 300)) && [[ "${STAGE}" == 1 ]]; then
+            echo "::warning::${TARGET} reached the stage 1 budget; stage 2 resumes it."
+            echo "state=partial" >>"${GITHUB_OUTPUT}"
+          else
+            echo "::error::${TARGET} failed in stage ${STAGE} after ${elapsed} s."
+            exit 1
+          fi
+
+      - name: Stop processes left by the interrupted build
+        if: steps.result.outputs.state == 'partial'
+        run: |
+          case "${RUNNER_OS}" in
+          Linux)
+            docker ps -q | xargs -r docker kill || true
+            for dir in ${TREE_DIRS}; do
+              sudo chown -R "$(id -u):$(id -g)" "${TREE_ROOT}/${dir}"
+            done
+            ;;
+          macOS)
+            pkill -f ninja || true
+            ;;
+          Windows)
+            for exe in ninja.exe cl.exe link.exe castxml.exe swig.exe sccache.exe; do
+              taskkill //F //IM "${exe}" || true
+            done
+            ;;
+          esac
+
+      - name: Pack the build tree for stage 2
+        if: steps.result.outputs.state == 'partial'
+        run: |
+          cd "${TREE_ROOT}"
+          read -r -a dirs <<<"${TREE_DIRS}"
+          cmake -E tar cf "${RUNNER_TEMP}/itk-build-tree.tar.zst" --zstd "${dirs[@]}"
+          ls -l "${RUNNER_TEMP}/itk-build-tree.tar.zst"
+
+      - name: Upload the build tree for stage 2
+        if: steps.result.outputs.state == 'partial'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: itk-build-tree-${{ matrix.target }}
+          path: ${{ runner.temp }}/itk-build-tree.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Trim the ccache to this build's entries
+        if: ${{ !cancelled() && steps.gate.outputs.go == 'true' && steps.result.outputs.state != 'partial' && matrix.cache-tool == 'ccache' }}
+        run: |
+          ccache_cmd() { pixi exec --spec 'ccache>=4.10,<5' ccache "$@"; }
+          if [[ "${RUNNER_OS}" == Linux ]]; then
+            sudo chown -R "$(id -u):$(id -g)" "${COMPILER_CACHE_DIR}"
+          fi
+          ccache_cmd --evict-older-than 1d || true
+          ccache_cmd --cleanup || true
+          ccache_cmd --show-stats
+
+      - name: Save the compiler cache
+        if: ${{ !cancelled() && steps.gate.outputs.go == 'true' && steps.result.outputs.state != 'partial' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPILER_CACHE_DIR }}
+          key: ${{ matrix.cache-tool }}-v1-${{ runner.os }}-${{ matrix.target }}-${{ inputs.itk-commit }}
+
+      - name: Upload the wheels
+        if: steps.result.outputs.state == 'done'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.target }}
+          path: ${{ env.DIST_DIR }}/*.whl
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload the step timings
+        if: always() && steps.gate.outputs.go == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-log-${{ matrix.target }}-stage${{ inputs.stage }}
+          path: ${{ env.DIST_DIR }}/build_log_*.json
+          retention-days: 30
+          if-no-files-found: ignore

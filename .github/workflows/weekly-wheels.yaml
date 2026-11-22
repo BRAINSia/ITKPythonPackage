@@ -1,0 +1,95 @@
+name: weekly-wheels
+
+# Builds every ITK release wheel from ITK main on GitHub-hosted runners and
+# keeps them as workflow artifacts; nothing is published (issue #126).
+on:
+  schedule:
+    - cron: "17 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      itk-ref:
+        description: "ITK branch, tag or full commit hash"
+        default: main
+        type: string
+      package-version:
+        description: "Wheel version; empty derives one with git describe"
+        default: ""
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      itk-commit: ${{ steps.ref.outputs.commit }}
+    steps:
+      - name: Resolve the ITK ref to one commit for every stage
+        id: ref
+        env:
+          ITK_REF: ${{ inputs.itk-ref || 'main' }}
+        run: |
+          if [[ "${ITK_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            commit=${ITK_REF}
+          else
+            commit=$(git ls-remote https://github.com/InsightSoftwareConsortium/ITK.git \
+              "refs/heads/${ITK_REF}" "refs/tags/${ITK_REF}" \
+              | awk '$2 ~ /\^\{\}$/ {peeled=$1} NR==1 {first=$1} END {print peeled ? peeled : first}')
+          fi
+          if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Cannot resolve ITK ref ${ITK_REF}"
+            exit 1
+          fi
+          echo "ITK ${ITK_REF} = ${commit}"
+          echo "commit=${commit}" >>"${GITHUB_OUTPUT}"
+
+  # A cold build does not fit in one 6 h job on standard runners, so the
+  # second stage resumes any target the first left unfinished.
+  stage-1:
+    needs: resolve
+    uses: $/.github/workflows/weekly-wheels-stage.yaml
+    with:
+      stage: 1
+      itk-commit: ${{ needs.resolve.outputs.itk-commit }}
+      package-version: ${{ inputs.package-version || '' }}
+
+  stage-2:
+    needs: [resolve, stage-1]
+    uses: $/.github/workflows/weekly-wheels-stage.yaml
+    with:
+      stage: 2
+      itk-commit: ${{ needs.resolve.outputs.itk-commit }}
+      package-version: ${{ inputs.package-version || '' }}
+
+  # Keeps only the newest compiler cache per target within the repository's
+  # cache budget, using ITK's own housekeeping script.
+  prune-superseded-caches:
+    needs: stage-2
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    continue-on-error: true
+    steps:
+      - name: Check out ITK's cache pruning script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: InsightSoftwareConsortium/ITK
+          ref: c0d7db576d4cca53edc7f2f310d5b1cbbd8c1000
+          sparse-checkout: Utilities/Maintenance/PruneSupersededCiCaches.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Prune superseded compiler caches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 Utilities/Maintenance/PruneSupersededCiCaches.py
