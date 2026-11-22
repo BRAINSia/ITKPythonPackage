@@ -4,7 +4,7 @@
 # Run `pre-commit autoupdate` to update hook versions
 
 # Exclude generated/vendored directories from all hooks
-exclude: ^(\.pixi/|build/|docs/data/|pixi\.lock$)
+exclude: ^(\.pixi/|build/|pixi\.lock$)
 
 repos:
   # General file hygiene

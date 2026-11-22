@@ -21,42 +21,34 @@ There are also many `downloadable examples documented in Sphinx
 
 ----
 
-Quick Links
------------
+Build Guides
+------------
+
+The guides for building ITK Python wheels and ITK module Python wheels are
+part of the ITK documentation.
 
 .. grid:: 2
    :gutter: 3
 
-   .. grid-item-card:: Prerequisites
-      :link: Prerequisites
-      :link-type: doc
-
-      Platform requirements and tooling setup for building ITK wheels.
-
    .. grid-item-card:: Build ITK Python Packages
-      :link: Build_ITK_Python_packages
-      :link-type: doc
+      :link: https://docs.itk.org/en/latest/contributing/python_packaging.html
+      :link-type: url
 
-      Build core ITK wheels (``itk-core``, ``itk-numerics``, ``itk-io``, etc.)
-      from source.
+      Prerequisites, and building core ITK wheels (``itk-core``,
+      ``itk-numerics``, ``itk-io``, etc.) from source.
 
-   .. grid-item-card:: Build ITK Module Packages
-      :link: Build_ITK_Module_Python_packages
-      :link-type: doc
+   .. grid-item-card:: Build ITK Module Python Packages
+      :link: https://docs.itk.org/en/latest/contributing/python_module_packaging.html
+      :link-type: url
 
       Create, build, and publish Python packages for ITK remote and external
       modules.
 
-   .. grid-item-card:: Miscellaneous
-      :link: Miscellaneous
-      :link-type: doc
-
-      License, authors, and additional resources.
-
 ----
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 1
+   :hidden:
 
    Prerequisites
    Build_ITK_Python_packages

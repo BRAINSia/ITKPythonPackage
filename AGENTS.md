@@ -52,7 +52,8 @@ is pinned, so reproducibility is yours to manage.
 
 A release publishes 8 wheels for each of 4 targets, 32 in all. No single
 machine builds every target, so a full set takes three hosts, each with
-pixi and Git 2.x (see docs/Prerequisites.rst):
+pixi and Git 2.x (see the
+[prerequisites](https://docs.itk.org/en/latest/contributing/python_packaging.html#prerequisites)):
 
 | Target              | Build host                            |
 | ------------------- | ------------------------------------- |

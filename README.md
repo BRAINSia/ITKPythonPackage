@@ -32,7 +32,7 @@ for more information.
 For special cases where ITK reusable workflows are not a good fit,
 ITKPythonPackage scripts can be directly used to build Python wheels
 to target Windows, Linux, and macOS platforms. See
-below or the [ITKPythonPackage ReadTheDocs](https://itkpythonpackage.readthedocs.io/en/latest/Build_ITK_Module_Python_packages.html)
+below or the [ITK module packaging guide](https://docs.itk.org/en/latest/contributing/python_module_packaging.html)
 documentation for more information on building wheels by hand.
 
 ## Building ITK Python Wheels
@@ -533,7 +533,7 @@ tools. Then, the module can be built, packaged, and distributed on [PyPI](https:
 
 ### My external module has a complicated build process. Is it supported by ITKPythonPackage?
 
-Start by consulting the [ITKPythonPackage ReadTheDocs](https://itkpythonpackage.readthedocs.io/en/master/Build_ITK_Module_Python_packages.html)
+Start by consulting the [ITK module packaging guide](https://docs.itk.org/en/latest/contributing/python_module_packaging.html)
 documentation and the [ITKPythonPackage issue tracker](https://github.com/InsightSoftwareConsortium/ITKPythonPackage/issues)
 for discussion related to your specific issue.
 

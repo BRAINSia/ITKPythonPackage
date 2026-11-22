@@ -10,7 +10,6 @@ dev = ["pytest>=8", "hypothesis>=6"]
 line-length = 88
 target-version = "py311"
 show-fixes = true
-extend-exclude = ["docs"] # example snippets, excluded from pre-commit too
 
 [tool.ruff.format]
 docstring-code-format = true
